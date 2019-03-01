@@ -4,7 +4,7 @@
   "description": "Mock Bedrock KMS service",
   "main": "index.js",
   "peerDependencies": {
-    "axios-mock-adapter": "^1.15.0"
+    "pretender": "^2.1.1"
   },
   "repository": {
     "type": "git",

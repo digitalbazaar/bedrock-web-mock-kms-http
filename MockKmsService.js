@@ -7,8 +7,7 @@ import {parseRequest} from 'http-signature-header';
 import {MockKmsPlugin} from './MockKmsPlugin.js';
 
 export class MockKmsService {
-  constructor({mockAdapter}) {
-    this.mockAdapter = mockAdapter;
+  constructor({server}) {
     this.plugins = new Map();
 
     const mockPlugin = new MockKmsPlugin();
@@ -19,41 +18,62 @@ export class MockKmsService {
       operations: `${root}/operations`
     };
 
-    mockAdapter.onPost(routes.operations).reply(async config => {
-      // get `controller` from key ID in Authorization header
-      const parsed = parseRequest(
-        config, {headers: ['expires', 'host', '(request-target)']});
-      const controller = parsed.keyId;
-
-      // parse operation from POST data
-      const operation = JSON.parse(config.data);
-
-      const {method, parameters, plugin} = operation;
-      // TODO: validate method, parameters, plugin
-
-      // prevent calling private methods
-      if(typeof method !== 'string' || method.startsWith('_')) {
-        return [400, new TypeError('"method" must be a string.')];
-      }
-
-      // ensure plugin exists and supports operation method
-      const pluginApi = this.plugins.get(plugin);
-      if(!(pluginApi && typeof pluginApi[method] === 'function')) {
-        return [400, new TypeError(`Method "${method}" is not supported.`)];
-      }
-
-      let result;
-      try {
-        result = await pluginApi[method]({...parameters, controller});
-      } catch(e) {
-        let code = 500;
-        if(e instanceof TypeError) {
-          code = 400;
+    server.map(() => {
+      server.post(routes.operations, async request => {
+        // lowercase headers
+        const headers = {};
+        for(const key in request.requestHeaders) {
+          headers[key.toLowerCase()] = request.requestHeaders[key];
         }
-        return [code, e];
-      }
+        const requestOptions = {
+          method: request.method,
+          url: request.url,
+          headers
+        };
 
-      return [200, JSON.stringify(result)];
+        // get `controller` from key ID in Authorization header
+        const parsed = parseRequest(
+          requestOptions, {headers: ['expires', 'host', '(request-target)']});
+        const controller = parsed.keyId;
+
+        // parse operation from POST data
+        const operation = JSON.parse(request.requestBody);
+
+        const {method, parameters, plugin} = operation;
+        // TODO: validate method, parameters, plugin
+
+        // prevent calling private methods
+        if(typeof method !== 'string' || method.startsWith('_')) {
+          return [
+            400,
+            {json: true},
+            new TypeError('"method" must be a string.')
+          ];
+        }
+
+        // ensure plugin exists and supports operation method
+        const pluginApi = this.plugins.get(plugin);
+        if(!(pluginApi && typeof pluginApi[method] === 'function')) {
+          return [
+            400,
+            {json: true},
+            new TypeError(`Method "${method}" is not supported.`)
+          ];
+        }
+
+        let result;
+        try {
+          result = await pluginApi[method]({...parameters, controller});
+        } catch(e) {
+          let code = 500;
+          if(e instanceof TypeError) {
+            code = 400;
+          }
+          return [code, {json: true}, e];
+        }
+
+        return [200, {json: true}, result];
+      });
     });
   }
 }
