@@ -48,20 +48,20 @@ export class MockKmsPlugin {
     return {id};
   }
 
-  async wrapKey({controller, kekId, encodedKey}) {
+  async wrapKey({controller, kekId, key}) {
     if(typeof kekId !== 'string') {
       throw new TypeError('"kekId" must be a string.');
     }
-    if(typeof encodedKey !== 'string') {
-      throw new TypeError('"encodedKey" must be a base64url-encoded string.');
+    if(typeof key !== 'string') {
+      throw new TypeError('"key" must be a base64url-encoded string.');
     }
 
     const {key: kek} = this._getKeyRegistration({id: kekId, controller});
 
-    const key = base64url.decode(encodedKey);
+    key = base64url.decode(key);
     const wrappedKey = await crypto.subtle.wrapKey(
       'raw', key, kek, kek.algorithm);
-    return base64url.encode(new Uint8Array(wrappedKey));
+    return {wrappedKey: base64url.encode(new Uint8Array(wrappedKey))};
   }
 
   async unwrapKey({controller, kekId, wrappedKey}) {
@@ -88,7 +88,7 @@ export class MockKmsPlugin {
       keyAlgorithm, extractable, ['encrypt']);
 
     const keyBytes = await crypto.subtle.exportKey('raw', key);
-    return base64url.encode(new Uint8Array(keyBytes));
+    return {key: base64url.encode(new Uint8Array(keyBytes))};
   }
 
   async sign({controller, keyId, data}) {
@@ -104,7 +104,7 @@ export class MockKmsPlugin {
     data = base64url.decode(data);
     const signature = new Uint8Array(
       await crypto.subtle.sign(key.algorithm, key, data));
-    return base64url.encode(signature);
+    return {signature: base64url.encode(signature)};
   }
 
   async verify({controller, keyId, data, signature}) {
@@ -122,7 +122,9 @@ export class MockKmsPlugin {
 
     data = base64url.decode(data);
     signature = base64url.decode(signature);
-    return crypto.subtle.verify(key.algorithm, key, signature, data);
+    return {
+      verified: crypto.subtle.verify(key.algorithm, key, signature, data)
+    };
   }
 
   _getKeyRegistration({id, controller}) {
