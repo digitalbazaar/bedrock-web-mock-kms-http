@@ -45,7 +45,7 @@ export class MockKmsPlugin {
     }
 
     this.storage.set(id, {key, controller});
-    return id;
+    return {id};
   }
 
   async wrapKey({controller, kekId, encodedKey}) {
