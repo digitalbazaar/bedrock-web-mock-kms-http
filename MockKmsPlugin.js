@@ -59,6 +59,11 @@ export class MockKmsPlugin {
     const {key: kek} = this._getKeyRegistration({id: kekId, controller});
 
     key = base64url.decode(key);
+    // Note: algorithm name doesn't matter; will exported raw.
+    // TODO: support other key lengths?
+    const extractable = true;
+    key = await crypto.subtle.importKey(
+      'raw', key, {name: 'AES-GCM', length: 256}, extractable, ['encrypt']);
     const wrappedKey = await crypto.subtle.wrapKey(
       'raw', key, kek, kek.algorithm);
     return {wrappedKey: base64url.encode(new Uint8Array(wrappedKey))};
@@ -76,6 +81,7 @@ export class MockKmsPlugin {
 
     let keyAlgorithm;
     if(kek.algorithm === 'AES-KW') {
+      // Note: algorithm name doesn't matter; will be exported raw
       keyAlgorithm = {name: 'AES-GCM'};
     } else {
       throw new Error(`Unknown unwrapping algorithm "${kek.algorithm}".`);
