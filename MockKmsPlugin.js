@@ -80,11 +80,11 @@ export class MockKmsPlugin {
     const {key: kek} = this._getKeyRegistration({id: kekId, controller});
 
     let keyAlgorithm;
-    if(kek.algorithm === 'AES-KW') {
+    if(kek.algorithm.name === 'AES-KW') {
       // Note: algorithm name doesn't matter; will be exported raw
       keyAlgorithm = {name: 'AES-GCM'};
     } else {
-      throw new Error(`Unknown unwrapping algorithm "${kek.algorithm}".`);
+      throw new Error(`Unknown unwrapping algorithm "${kek.algorithm.name}".`);
     }
 
     wrappedKey = base64url.decode(wrappedKey);
