@@ -1,6 +1,6 @@
 # bedrock-web-mock-kms-http ChangeLog
 
-## 1.0.1 - 2019-03-xx
+## 1.0.1 - 2019-03-08
 
 ### Fixed
 - Set `host` header if not automatically set by browser; this
