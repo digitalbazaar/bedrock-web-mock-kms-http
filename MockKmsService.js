@@ -30,6 +30,11 @@ export class MockKmsService {
         headers
       };
 
+      // mock `host` header as it should be auto-set by the browser
+      if(!('host' in headers)) {
+        headers.host = new URL(request.url).host;
+      }
+
       // get `controller` from key ID in Authorization header
       const parsed = parseRequest(
         requestOptions, {headers: ['expires', 'host', '(request-target)']});
