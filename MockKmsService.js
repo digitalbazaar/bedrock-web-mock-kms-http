@@ -3,7 +3,7 @@
  */
 'use strict';
 
-import {parseRequest} from 'http-signature-header';
+// TODO: import ocapld
 import {MockKmsPlugin} from './MockKmsPlugin.js';
 
 export class MockKmsService {
@@ -15,36 +15,38 @@ export class MockKmsService {
 
     const root = `/kms`;
     const routes = {
-      operations: `${root}/operations`
+      operations: `${root}/:plugin/:uuid`
     };
 
+    this.storage = new Map();
+
     server.post(routes.operations, async request => {
-      // lowercase headers
-      const headers = {};
-      for(const key in request.requestHeaders) {
-        headers[key.toLowerCase()] = request.requestHeaders[key];
-      }
-      const requestOptions = {
-        method: request.method,
-        url: request.url,
-        headers
-      };
-
-      // mock `host` header as it should be auto-set by the browser
-      if(!('host' in headers)) {
-        headers.host = new URL(request.url).host;
-      }
-
-      // get `controller` from key ID in Authorization header
-      const parsed = parseRequest(
-        requestOptions, {headers: ['expires', 'host', '(request-target)']});
-      const controller = parsed.keyId;
-
-      // parse operation from POST data
+      // get key ID, plugin, and operation from request
+      const keyId = request.url;
+      const {plugin} = request.params;
       const operation = JSON.parse(request.requestBody);
+      // TODO: validate operation
 
-      const {method, parameters, plugin} = operation;
-      // TODO: validate method, parameters, plugin
+      // TODO: verify ocap invocation proof; ensure `controller` matches key ID
+      const controller = operation.proof.verificationMethod;
+
+      const record = this.storage.get(keyId);
+      if(operation.type === 'GenerateKeyOperation') {
+        // check for duplicate key
+        if(record) {
+          return [
+            409, {json: true}, new Error(`Key "${keyId}" already exists.`)];
+        }
+      } else {
+        // ensure `controller` matches
+        if(record.controller !== controller) {
+          return [400, {json: true}, new Error(`Key "${keyId}" not found.`)];
+        }
+      }
+
+      // determine plugin and method
+      const method = operation.type.charAt(0).toLowerCase() +
+        operation.type.substring(1, operation.type.indexOf('Operation'));
 
       // prevent calling private methods
       if(typeof method !== 'string' || method.startsWith('_')) {
@@ -67,13 +69,17 @@ export class MockKmsService {
 
       let result;
       try {
-        result = await pluginApi[method]({...parameters, controller});
+        result = await pluginApi[method]({keyId, operation});
       } catch(e) {
         let code = 500;
         if(e instanceof TypeError) {
           code = 400;
         }
         return [code, {json: true}, e];
+      }
+
+      if(operation.type === 'GenerateKeyOperation') {
+        this.storage.set(keyId, {controller});
       }
 
       return [200, {json: true}, result];

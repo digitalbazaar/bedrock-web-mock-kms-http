@@ -26,9 +26,7 @@
     "browserDependencies": "all"
   },
   "dependencies": {
-    "base64url-universal": "^1.0.0",
-    "http-signature-header": "^1.2.0",
-    "uuid-random": "^1.0.6"
+    "base64url-universal": "^1.0.0"
   },
   "devDependencies": {
     "eslint": "^5.15.0",

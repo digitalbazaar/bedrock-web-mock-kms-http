@@ -4,7 +4,6 @@
 'use strict';
 
 import * as base64url from 'base64url-universal';
-import uuid from 'uuid-random';
 
 export class MockKmsPlugin {
   constructor() {
@@ -12,29 +11,26 @@ export class MockKmsPlugin {
     this.storage = new Map();
   }
 
-  async generateKey({controller, type, id = uuid()}) {
+  async generateKey({keyId, operation}) {
+    const {invocationTarget: {type}} = operation;
+    if(typeof keyId !== 'string') {
+      throw new TypeError('"keyId" must be a string.');
+    }
     if(typeof type !== 'string') {
-      throw new TypeError('"type" must be a string.');
-    }
-    if(typeof id !== 'string') {
-      throw new TypeError('"id" must be a string.');
-    }
-
-    if(this.storage.has(id)) {
-      throw new Error(`Key "${id}" already exists.`);
+      throw new TypeError('"operation.type" must be a string.');
     }
 
     // disable exporting keys
     let key;
     const extractable = false;
 
-    if(type === 'AES-KW') {
+    if(type === 'AesKeyWrappingKey2019') {
       // TODO: support other lengths?
       key = await crypto.subtle.generateKey(
         {name: 'AES-KW', length: 256},
         extractable,
         ['wrapKey', 'unwrapKey']);
-    } else if(type === 'HS256') {
+    } else if(type === 'Sha256HmacKey') {
       // TODO: support other hashes?
       key = await crypto.subtle.generateKey(
         {name: 'HMAC', hash: {name: 'SHA-256'}},
@@ -44,21 +40,23 @@ export class MockKmsPlugin {
       throw new Error(`Unknown key type "${type}".`);
     }
 
-    this.storage.set(id, {key, controller});
-    return {id};
+    this.storage.set(keyId, key);
+    return {id: keyId};
   }
 
-  async wrapKey({controller, kekId, key}) {
-    if(typeof kekId !== 'string') {
-      throw new TypeError('"kekId" must be a string.');
+  async wrapKey({keyId, operation}) {
+    const {unwrappedKey} = operation;
+    if(typeof keyId !== 'string') {
+      throw new TypeError('"keyId" must be a string.');
     }
-    if(typeof key !== 'string') {
-      throw new TypeError('"key" must be a base64url-encoded string.');
+    if(typeof unwrappedKey !== 'string') {
+      throw new TypeError(
+        '"operation.unwrappedKey" must be a base64url-encoded string.');
     }
 
-    const {key: kek} = this._getKeyRegistration({id: kekId, controller});
+    const kek = this._getKey(keyId);
 
-    key = base64url.decode(key);
+    let key = base64url.decode(unwrappedKey);
     // Note: algorithm name doesn't matter; will exported raw.
     // TODO: support other key lengths?
     const extractable = true;
@@ -69,15 +67,17 @@ export class MockKmsPlugin {
     return {wrappedKey: base64url.encode(new Uint8Array(wrappedKey))};
   }
 
-  async unwrapKey({controller, kekId, wrappedKey}) {
-    if(typeof kekId !== 'string') {
-      throw new TypeError('"kekId" must be a string.');
+  async unwrapKey({keyId, operation}) {
+    let {wrappedKey} = operation;
+    if(typeof keyId !== 'string') {
+      throw new TypeError('"keyId" must be a string.');
     }
     if(typeof wrappedKey !== 'string') {
-      throw new TypeError('"wrappedKey" must be a base64url-encoded string.');
+      throw new TypeError(
+        '"operation.wrappedKey" must be a base64url-encoded string.');
     }
 
-    const {key: kek} = this._getKeyRegistration({id: kekId, controller});
+    const kek = this._getKey(keyId);
 
     let keyAlgorithm;
     if(kek.algorithm.name === 'AES-KW') {
@@ -94,50 +94,55 @@ export class MockKmsPlugin {
       keyAlgorithm, extractable, ['encrypt']);
 
     const keyBytes = await crypto.subtle.exportKey('raw', key);
-    return {key: base64url.encode(new Uint8Array(keyBytes))};
+    return {unwrappedKey: base64url.encode(new Uint8Array(keyBytes))};
   }
 
-  async sign({controller, keyId, data}) {
+  async sign({keyId, operation}) {
+    const {verifyData} = operation;
     if(typeof keyId !== 'string') {
       throw new TypeError('"keyId" must be a string.');
     }
-    if(typeof data !== 'string') {
-      throw new TypeError('"data" must be a base64url-encoded string.');
+    if(typeof verifyData !== 'string') {
+      throw new TypeError(
+        '"operation.verifyData" must be a base64url-encoded string.');
     }
 
-    const {key} = this._getKeyRegistration({id: keyId, controller});
+    const key = this._getKey(keyId);
 
-    data = base64url.decode(data);
+    const data = base64url.decode(verifyData);
     const signature = new Uint8Array(
       await crypto.subtle.sign(key.algorithm, key, data));
-    return {signature: base64url.encode(signature)};
+    return {signatureValue: base64url.encode(signature)};
   }
 
-  async verify({controller, keyId, data, signature}) {
+  async verify({keyId, operation}) {
+    const {signatureValue, verifyData} = operation;
     if(typeof keyId !== 'string') {
       throw new TypeError('"keyId" must be a string.');
     }
-    if(typeof data !== 'string') {
-      throw new TypeError('"data" must be a base64url-encoded string.');
+    if(typeof verifyData !== 'string') {
+      throw new TypeError(
+        '"operation.verifyData" must be a base64url-encoded string.');
     }
-    if(typeof signature !== 'string') {
-      throw new TypeError('"signature" must be a base64url-encoded string.');
+    if(typeof signatureValue !== 'string') {
+      throw new TypeError(
+        '"signatureValue" must be a base64url-encoded string.');
     }
 
-    const {key} = this._getKeyRegistration({id: keyId, controller});
+    const key = this._getKey(keyId);
 
-    data = base64url.decode(data);
-    signature = base64url.decode(signature);
+    const data = base64url.decode(verifyData);
+    const signature = base64url.decode(signatureValue);
     return {
       verified: crypto.subtle.verify(key.algorithm, key, signature, data)
     };
   }
 
-  _getKeyRegistration({id, controller}) {
-    const registration = this.storage.get(id);
-    if(!registration || registration.controller !== controller) {
+  _getKey(id) {
+    const key = this.storage.get(id);
+    if(!key) {
       throw new Error(`Key "${id}" not found.`);
     }
-    return registration;
+    return key;
   }
 }
