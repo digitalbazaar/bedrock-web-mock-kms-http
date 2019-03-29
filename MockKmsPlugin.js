@@ -30,7 +30,7 @@ export class MockKmsPlugin {
         {name: 'AES-KW', length: 256},
         extractable,
         ['wrapKey', 'unwrapKey']);
-    } else if(type === 'Sha256HmacKey') {
+    } else if(type === 'Sha256HmacKey2019') {
       // TODO: support other hashes?
       key = await crypto.subtle.generateKey(
         {name: 'HMAC', hash: {name: 'SHA-256'}},
