@@ -21,8 +21,7 @@ export class MockKmsService {
     this.storage = new Map();
 
     server.post(routes.operations, async request => {
-      // get key ID, plugin, and operation from request
-      const keyId = request.url;
+      // get plugin and operation from request
       const {plugin} = request.params;
       const operation = JSON.parse(request.requestBody);
       // TODO: validate operation
@@ -30,8 +29,12 @@ export class MockKmsService {
       // TODO: verify ocap invocation proof; ensure `controller` matches key ID
       const controller = operation.proof.verificationMethod;
 
+      const isGenerateKeyOp = operation.type === 'GenerateKeyOperation';
+      const keyId = isGenerateKeyOp ?
+        operation.invocationTarget.id : operation.invocationTarget;
+
       const record = this.storage.get(keyId);
-      if(operation.type === 'GenerateKeyOperation') {
+      if(isGenerateKeyOp) {
         // check for duplicate key
         if(record) {
           return [
@@ -78,7 +81,7 @@ export class MockKmsService {
         return [code, {json: true}, e];
       }
 
-      if(operation.type === 'GenerateKeyOperation') {
+      if(isGenerateKeyOp) {
         this.storage.set(keyId, {controller});
       }
 
