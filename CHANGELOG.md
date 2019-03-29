@@ -1,5 +1,10 @@
 # bedrock-web-mock-kms-http ChangeLog
 
+## 2.0.1 - 2019-03-29
+
+### Fixed
+- Fix typo with key type.
+
 ## 2.0.0 - 2019-03-29
 
 ### Changed
