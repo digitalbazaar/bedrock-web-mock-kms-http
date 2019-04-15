@@ -7,7 +7,8 @@
 import {MockKmsPlugin} from './MockKmsPlugin.js';
 
 export class MockKmsService {
-  constructor({server}) {
+  constructor({server, kmsPlugin = 'mock'}) {
+    this.kmsPlugin = kmsPlugin;
     this.plugins = new Map();
 
     const mockPlugin = new MockKmsPlugin();
@@ -87,5 +88,52 @@ export class MockKmsService {
 
       return [200, {json: true}, result];
     });
+  }
+  async wrapKey ({key, kekId}) {
+      const unwrappedKey = base64url.encode(key);
+      const operation = {
+        type: 'WrapKeyOperation',
+        invocationTarget: kekId,
+        unwrappedKey
+      };
+      const {wrappedKey} = await this.plugins
+        .get(this.kmsPlugin).wrapKey({keyId: kekId, operation});
+      return wrappedKey;
+  };
+
+  async unwrapKey ({wrappedKey, kekId}) {
+      const operation = {
+        type: 'UnwrapKeyOperation',
+        invocationTarget: kekId,
+        wrappedKey
+      };
+      const {unwrappedKey} = await this.plugins.get(this.kmsPlugin)
+        .unwrapKey({keyId: kekId, operation});
+      return base64url.decode(unwrappedKey);
+  };
+
+  async sign ({keyId, data}) {
+      data = base64url.encode(data);
+      const operation = {
+        type: 'SignOperation',
+        invocationTarget: keyId,
+        verifyData: data
+      };
+      const {signatureValue} = await this.plugins.get(this.kmsPlugin)
+        .sign({keyId, operation});
+      return signatureValue;
+  };
+
+  async verify({keyId, data, signature}) {
+      const verifyData = base64url.encode(data);
+      const operation = {
+        type: 'VerifyOperation',
+        invocationTarget: keyId,
+        verifyData,
+        signatureValue: signature
+      };
+      const {verified} = await this.plugins.get(this.kmsPlugin)
+        .verify({keyId, operation});
+      return verified;
   }
 }
